@@ -1,4 +1,9 @@
+import random
 import unittest
+from unittest import mock
+
+import numpy as np
+import pytest
 
 from jmetal.problem.multiobjective.zdt import ZDT1, ZDT2, ZDT3, ZDT4, ZDT5, ZDT6
 
@@ -245,6 +250,53 @@ class ZDT5TestCases(unittest.TestCase):
     def test_should_get_name_return_the_right_name(self):
         problem = ZDT5()
         self.assertEqual("ZDT5", problem.name())
+
+
+class TestZDT5Initialization:
+    @pytest.mark.parametrize("use_generator", [True, False])
+    @pytest.mark.parametrize("number_of_variables", [2, 11])
+    def test_should_store_each_scalar_draw_in_flat_bits(self, use_generator: bool, number_of_variables: int) -> None:
+        """Values below, equal to, and above 0.5 preserve the existing threshold."""
+        problem = ZDT5(number_of_variables)
+        count = problem.number_of_variables()
+        draws = ([0.0, 0.49, 0.5, 0.99] * ((count + 3) // 4))[:count]
+        expected = [value < 0.5 for value in draws]
+        rng = mock.Mock(spec=np.random.Generator)
+        rng.random.side_effect = draws
+        with mock.patch("jmetal.problem.multiobjective.zdt.random.random", side_effect=draws) as global_random:
+            solution = problem.create_solution(rng if use_generator else None)
+
+        assert solution.variables == expected
+        np.testing.assert_array_equal(solution.bits, expected)
+        assert solution.number_of_variables == count and solution.number_of_objectives == 2
+        assert solution.objectives == [0.0, 0.0] and solution.constraints == []
+        selected = rng.random if use_generator else global_random
+        assert selected.call_args_list == [mock.call()] * count
+        (global_random if use_generator else rng.random).assert_not_called()
+
+    def test_should_preserve_seeded_generator_scalar_draws_and_state(self) -> None:
+        rng = np.random.default_rng(42)
+        reference = np.random.default_rng(42)
+        expected = [reference.random() < 0.5 for _ in range(80)]
+
+        solution = ZDT5().create_solution(rng)
+
+        assert solution.variables == expected
+        assert rng.bit_generator.state == reference.bit_generator.state
+
+    def test_should_preserve_seeded_global_python_draws_and_state(self) -> None:
+        saved = random.getstate()
+        reference = random.Random(42)
+        expected = [reference.random() < 0.5 for _ in range(80)]
+        try:
+            random.seed(42)
+            solution = ZDT5().create_solution()
+            state = random.getstate()
+        finally:
+            random.setstate(saved)
+
+        assert solution.variables == expected
+        assert state == reference.getstate()
 
 
 if __name__ == "__main__":

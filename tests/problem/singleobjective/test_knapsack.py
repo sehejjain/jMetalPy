@@ -1,6 +1,9 @@
 import unittest
 from unittest import mock
 
+import numpy as np
+import pytest
+
 from jmetal.problem.singleobjective.knapsack import Knapsack
 
 
@@ -58,3 +61,62 @@ class KnapsackTestCases(unittest.TestCase):
     def test_should_get_name_return_the_right_name(self):
         problem = Knapsack()
         self.assertEqual("Knapsack", problem.name())
+
+
+class TestKnapsackInitialization:
+    @pytest.mark.parametrize("use_generator", [True, False])
+    def test_should_store_sampled_pattern_in_returned_bits(self, use_generator: bool) -> None:
+        """Both random sources must populate the solution, not a temporary list."""
+        problem = Knapsack(5)
+        expected = np.array([True, False, True, False, True])
+        rng = mock.Mock(spec=np.random.Generator)
+        rng.choice.return_value = expected
+        with mock.patch("jmetal.problem.singleobjective.knapsack.np.random.choice", return_value=expected) as global_choice:
+            solution = problem.create_solution(rng if use_generator else None)
+
+        np.testing.assert_array_equal(solution.bits, expected)
+        assert solution.variables == expected.tolist()
+        assert solution.number_of_variables == 5 and solution.number_of_objectives == 1
+        assert solution.objectives == [0.0] and solution.constraints == []
+        selected = rng.choice if use_generator else global_choice
+        selected.assert_called_once_with([True, False], size=5)
+        (global_choice if use_generator else rng.choice).assert_not_called()
+
+    def test_should_preserve_seeded_generator_draw_and_state(self) -> None:
+        rng = np.random.default_rng(42)
+        reference = np.random.default_rng(42)
+        expected = reference.choice([True, False], size=50)
+
+        solution = Knapsack().create_solution(rng)
+
+        np.testing.assert_array_equal(solution.bits, expected)
+        assert rng.bit_generator.state == reference.bit_generator.state
+
+    def test_should_preserve_seeded_global_numpy_draw_and_state(self) -> None:
+        saved = np.random.get_state()
+        reference = np.random.RandomState(42)
+        expected = reference.choice([True, False], size=50)
+        try:
+            np.random.seed(42)
+            solution = Knapsack().create_solution()
+            state = np.random.get_state()
+        finally:
+            np.random.set_state(saved)
+
+        np.testing.assert_array_equal(solution.bits, expected)
+        expected_state = reference.get_state()
+        assert state[0] == expected_state[0] and state[2:] == expected_state[2:]
+        np.testing.assert_array_equal(state[1], expected_state[1])
+
+    @pytest.mark.parametrize("use_generator", [True, False])
+    def test_should_create_empty_vector_without_changing_sampling_call(self, use_generator: bool) -> None:
+        """The full setter supports the constructor's empty binary vector."""
+        rng = mock.Mock(spec=np.random.Generator)
+        rng.choice.return_value = np.array([], dtype=bool)
+        with mock.patch("jmetal.problem.singleobjective.knapsack.np.random.choice", return_value=np.array([], dtype=bool)) as global_choice:
+            solution = Knapsack(0).create_solution(rng if use_generator else None)
+
+        assert solution.variables == [] and solution.bits.size == 0
+        assert solution.number_of_variables == 0
+        assert solution.objectives == [0.0] and solution.constraints == []
+        (rng.choice if use_generator else global_choice).assert_called_once_with([True, False], size=0)
