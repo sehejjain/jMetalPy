@@ -253,17 +253,23 @@ class ZDT5TestCases(unittest.TestCase):
 
 
 class TestZDT5Initialization:
+    """Check scalar thresholds, stored samples, and generator state."""
+
     @pytest.mark.parametrize("use_generator", [True, False])
     @pytest.mark.parametrize("number_of_variables", [2, 11])
-    def test_should_store_each_scalar_draw_in_flat_bits(self, use_generator: bool, number_of_variables: int) -> None:
+    def test_should_store_each_scalar_draw_in_flat_bits(
+        self, use_generator: bool, number_of_variables: int
+    ) -> None:
         """Values below, equal to, and above 0.5 preserve the existing threshold."""
-        problem = ZDT5(number_of_variables)
-        count = problem.number_of_variables()
-        draws = ([0.0, 0.49, 0.5, 0.99] * ((count + 3) // 4))[:count]
-        expected = [value < 0.5 for value in draws]
-        rng = mock.Mock(spec=np.random.Generator)
+        problem: ZDT5 = ZDT5(number_of_variables)
+        count: int = problem.number_of_variables()
+        draws: list[float] = ([0.0, 0.49, 0.5, 0.99] * ((count + 3) // 4))[:count]
+        expected: list[bool] = [value < 0.5 for value in draws]
+        rng: mock.Mock = mock.Mock(spec=np.random.Generator)
         rng.random.side_effect = draws
-        with mock.patch("jmetal.problem.multiobjective.zdt.random.random", side_effect=draws) as global_random:
+        with mock.patch(
+            "jmetal.problem.multiobjective.zdt.random.random", side_effect=draws
+        ) as global_random:
             solution = problem.create_solution(rng if use_generator else None)
 
         assert solution.variables == expected
@@ -275,9 +281,10 @@ class TestZDT5Initialization:
         (global_random if use_generator else rng.random).assert_not_called()
 
     def test_should_preserve_seeded_generator_scalar_draws_and_state(self) -> None:
-        rng = np.random.default_rng(42)
-        reference = np.random.default_rng(42)
-        expected = [reference.random() < 0.5 for _ in range(80)]
+        """A supplied generator retains scalar draw order, count, and final state."""
+        rng: np.random.Generator = np.random.default_rng(42)
+        reference: np.random.Generator = np.random.default_rng(42)
+        expected: list[bool] = [reference.random() < 0.5 for _ in range(80)]
 
         solution = ZDT5().create_solution(rng)
 
@@ -285,9 +292,10 @@ class TestZDT5Initialization:
         assert rng.bit_generator.state == reference.bit_generator.state
 
     def test_should_preserve_seeded_global_python_draws_and_state(self) -> None:
+        """Global Python sampling matches a seeded reference and restores shared state."""
         saved = random.getstate()
-        reference = random.Random(42)
-        expected = [reference.random() < 0.5 for _ in range(80)]
+        reference: random.Random = random.Random(42)
+        expected: list[bool] = [reference.random() < 0.5 for _ in range(80)]
         try:
             random.seed(42)
             solution = ZDT5().create_solution()

@@ -64,14 +64,18 @@ class KnapsackTestCases(unittest.TestCase):
 
 
 class TestKnapsackInitialization:
+    """Check stored samples, random-source selection, and generator state."""
+
     @pytest.mark.parametrize("use_generator", [True, False])
     def test_should_store_sampled_pattern_in_returned_bits(self, use_generator: bool) -> None:
         """Both random sources must populate the solution, not a temporary list."""
-        problem = Knapsack(5)
-        expected = np.array([True, False, True, False, True])
-        rng = mock.Mock(spec=np.random.Generator)
+        problem: Knapsack = Knapsack(5)
+        expected: np.ndarray = np.array([True, False, True, False, True])
+        rng: mock.Mock = mock.Mock(spec=np.random.Generator)
         rng.choice.return_value = expected
-        with mock.patch("jmetal.problem.singleobjective.knapsack.np.random.choice", return_value=expected) as global_choice:
+        with mock.patch(
+            "jmetal.problem.singleobjective.knapsack.np.random.choice", return_value=expected
+        ) as global_choice:
             solution = problem.create_solution(rng if use_generator else None)
 
         np.testing.assert_array_equal(solution.bits, expected)
@@ -83,9 +87,10 @@ class TestKnapsackInitialization:
         (global_choice if use_generator else rng.choice).assert_not_called()
 
     def test_should_preserve_seeded_generator_draw_and_state(self) -> None:
-        rng = np.random.default_rng(42)
-        reference = np.random.default_rng(42)
-        expected = reference.choice([True, False], size=50)
+        """A supplied generator produces the expected bits and subsequent state."""
+        rng: np.random.Generator = np.random.default_rng(42)
+        reference: np.random.Generator = np.random.default_rng(42)
+        expected: np.ndarray = reference.choice([True, False], size=50)
 
         solution = Knapsack().create_solution(rng)
 
@@ -93,9 +98,10 @@ class TestKnapsackInitialization:
         assert rng.bit_generator.state == reference.bit_generator.state
 
     def test_should_preserve_seeded_global_numpy_draw_and_state(self) -> None:
+        """Global NumPy sampling matches a seeded reference and restores shared state."""
         saved = np.random.get_state()
-        reference = np.random.RandomState(42)
-        expected = reference.choice([True, False], size=50)
+        reference: np.random.RandomState = np.random.RandomState(42)
+        expected: np.ndarray = reference.choice([True, False], size=50)
         try:
             np.random.seed(42)
             solution = Knapsack().create_solution()
@@ -109,14 +115,21 @@ class TestKnapsackInitialization:
         np.testing.assert_array_equal(state[1], expected_state[1])
 
     @pytest.mark.parametrize("use_generator", [True, False])
-    def test_should_create_empty_vector_without_changing_sampling_call(self, use_generator: bool) -> None:
+    def test_should_create_empty_vector_without_changing_sampling_call(
+        self, use_generator: bool
+    ) -> None:
         """The full setter supports the constructor's empty binary vector."""
-        rng = mock.Mock(spec=np.random.Generator)
+        rng: mock.Mock = mock.Mock(spec=np.random.Generator)
         rng.choice.return_value = np.array([], dtype=bool)
-        with mock.patch("jmetal.problem.singleobjective.knapsack.np.random.choice", return_value=np.array([], dtype=bool)) as global_choice:
+        with mock.patch(
+            "jmetal.problem.singleobjective.knapsack.np.random.choice",
+            return_value=np.array([], dtype=bool),
+        ) as global_choice:
             solution = Knapsack(0).create_solution(rng if use_generator else None)
 
         assert solution.variables == [] and solution.bits.size == 0
         assert solution.number_of_variables == 0
         assert solution.objectives == [0.0] and solution.constraints == []
-        (rng.choice if use_generator else global_choice).assert_called_once_with([True, False], size=0)
+        (rng.choice if use_generator else global_choice).assert_called_once_with(
+            [True, False], size=0
+        )
